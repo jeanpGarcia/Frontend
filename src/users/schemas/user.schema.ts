@@ -1,4 +1,4 @@
-
+//Schema o Esquema de como se hace la base de datos en MongoDb
 import { Schema, Document } from 'mongoose';
 
 export interface User extends Document {
