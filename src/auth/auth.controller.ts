@@ -15,4 +15,4 @@ export class AuthController {
     return this.authService.register(registerData);
   }
 }
-//Creacionm de controlador para la utenticacion
+//Creacion de controlador para la utenticacion
