@@ -1,3 +1,4 @@
+//Modulo de usuario que conecta los servicios de los usuarios y schemas 
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersService } from './users.service';
