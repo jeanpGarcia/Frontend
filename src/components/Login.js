@@ -22,7 +22,7 @@ function Login({ setIsLoggedIn }) {
       setError('Error al iniciar sesión');
     }
   };
-
+//Diseño del login
   return (
     <div className="form-container">
       <h2>Iniciar Sesión</h2>
