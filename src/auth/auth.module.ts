@@ -16,4 +16,4 @@ import { JwtModule } from '@nestjs/jwt';
   providers: [AuthService],
 })
 export class AuthModule {}
-//Creacion de modulo para autenticar usuarios usando JWT para encriptar los mismos 
+//Creacion de modulo para autenticar usuarios usando JWT 
