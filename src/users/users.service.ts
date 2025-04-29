@@ -1,29 +1,166 @@
-//Servicios del usuario, conexion a la base de datos y encriptamiento de contraseñas
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { User, UserDocument } from './schemas/user.schema';
 import * as bcrypt from 'bcrypt';
-
-interface User {
-  username: string;
-  email: string;
-  password: string;
-}
+import { CreateUserDto } from '../dto/create-user.dto';
+import { UpdateUserDto } from '../dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel('User') private userModel: Model<User>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+  ) {}
 
-  async findByUsername(username: string): Promise<User | null> {
-    return this.userModel.findOne({ username }).exec();
+  async findAll(page: number = 1, limit: number = 10): Promise<Partial<User>[]> {
+    const skip = (page - 1) * limit;
+    const users = await this.userModel.find().skip(skip).limit(limit).exec();
+    
+    // Return users without passwords
+    return users.map(user => {
+      const userObj = user.toObject();
+      const { password, ...result } = userObj;
+      return result;
+    });
   }
 
-  async create(userData: any): Promise<User> {
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
+  async findOne(id: string): Promise<Partial<User>> {
+    const user = await this.userModel.findById(id).exec();
+    if (!user) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+    
+    // Return user without password
+    const userObj = user.toObject();
+    const { password, ...result } = userObj;
+    return result;
+  }
+
+  async findOneWithPassword(id: string): Promise<UserDocument> {
+    const user = await this.userModel.findById(id).exec();
+    if (!user) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async findByUsername(username: string): Promise<Partial<User> | null> {
+    const user = await this.userModel.findOne({ username }).exec();
+    if (!user) {
+      return null;
+    }
+    const userObj = user.toObject();
+    const { password, ...result } = userObj;
+    return result;
+  }
+
+  async findByEmail(email: string): Promise<Partial<User> | null> {
+    const user = await this.userModel.findOne({ email }).exec();
+    if (!user) {
+      return null;
+    }
+    const userObj = user.toObject();
+    const { password, ...result } = userObj;
+    return result;
+  }
+
+  async create(createUserDto: CreateUserDto): Promise<Partial<User>> {
+    // Check if username or email already exists
+    const existingUsername = await this.userModel.findOne({ username: createUserDto.username }).exec();
+    if (existingUsername) {
+      throw new ConflictException('Username already exists');
+    }
+
+    const existingEmail = await this.userModel.findOne({ email: createUserDto.email }).exec();
+    if (existingEmail) {
+      throw new ConflictException('Email already exists');
+    }
+    
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    
     const newUser = new this.userModel({
-      ...userData,
-      password: hashedPassword,
+      ...createUserDto,
+      password: hashedPassword
     });
-    return newUser.save();
+    
+    const savedUser = await newUser.save();
+    
+    // Return user without password
+    const userObj = savedUser.toObject();
+    const { password, ...result } = userObj;
+    return result;
+  }
+
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<Partial<User>> {
+    const updateData = { ...updateUserDto };
+    
+    // If password is being updated, hash it
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+    
+    // Check if updating to an existing username
+    if (updateData.username) {
+      const existingUser = await this.userModel.findOne({ 
+        username: updateData.username,
+        _id: { $ne: id } 
+      }).exec();
+      
+      if (existingUser) {
+        throw new ConflictException('Username already exists');
+      }
+    }
+    
+    // Check if updating to an existing email
+    if (updateData.email) {
+      const existingUser = await this.userModel.findOne({ 
+        email: updateData.email,
+        _id: { $ne: id } 
+      }).exec();
+      
+      if (existingUser) {
+        throw new ConflictException('Email already exists');
+      }
+    }
+    
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(id, updateData, { new: true })
+      .exec();
+      
+    if (!updatedUser) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+    
+    const userObj = updatedUser.toObject();
+    const { password, ...result } = userObj;
+    return result;
+  }
+
+  async updatePassword(id: string, newPassword: string): Promise<void> {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(id, { password: hashedPassword })
+      .exec();
+      
+    if (!updatedUser) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+  }
+
+  async validateUser(username: string, password: string): Promise<any | null> {
+    const user = await this.userModel.findOne({ username }).exec();
+    
+    if (user && await bcrypt.compare(password, user.password)) {
+      const userObj = user.toObject();
+      return {
+        _id: userObj._id,
+        username: userObj.username,
+        email: userObj.email
+      };
+    }
+    
+    return null;
   }
 }

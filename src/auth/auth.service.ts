@@ -1,38 +1,148 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
+import { ChangePasswordDto } from '../dto/change-password.dto';
+import { CreateUserDto } from '../dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
+
+// Define a proper interface for refresh tokens
+export interface RefreshTokenStore {
+  get(token: string): RefreshTokenData | undefined;
+  set(token: string, data: RefreshTokenData): void;
+  delete(token: string): void;
+}
+
+export interface RefreshTokenData {
+  userId: string;
+  expiresAt: Date;
+}
+
+export interface UserPayload {
+  userId: string;
+  username: string;
+  sub?: string;
+}
 
 @Injectable()
 export class AuthService {
+  // Simple in-memory token store (replace with a proper database in production)
+  private refreshTokenStore: Map<string, RefreshTokenData> = new Map();
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
   ) {}
 
-  async login(username: string, password: string) {
-    const user = await this.usersService.findByUsername(username);
-    if (!user) {
-      throw new UnauthorizedException('Usuario no encontrado');
+  async register(createUserDto: CreateUserDto) {
+    try {
+      const user = await this.usersService.create(createUserDto);
+      return {
+        message: 'User registered successfully',
+        user
+      };
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new ConflictException('Username or email already exists');
+      }
+      throw error;
     }
-  
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Contraseña incorrecta');
+  }
+
+  async getProfile(user: UserPayload) {
+    return this.usersService.findOne(user.userId);
+  }
+
+  async logout(user: UserPayload) {
+    // Implementation for logout - invalidate refresh tokens for this user
+    // This is a simple implementation, in a real app you would find and delete all tokens for this user
+    for (const [token, data] of this.refreshTokenStore.entries()) {
+      if (data.userId === user.userId) {
+        this.refreshTokenStore.delete(token);
+      }
     }
-  
-    const payload = { username: user.username, sub: user['_id'] };
+    return { status: 200, message: 'Logged out successfully' };
+  }
+
+  async refreshToken(refreshToken: string) {
+    // Verify the refresh token exists in the store
+    const storedToken = this.refreshTokenStore.get(refreshToken);
+    
+    if (!storedToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    
+    if (storedToken.expiresAt < new Date()) {
+      this.refreshTokenStore.delete(refreshToken);
+      throw new UnauthorizedException('Refresh token expired');
+    }
+    
+    // Find the user associated with the token
+    const user = await this.usersService.findOne(storedToken.userId);
+    const payload = { username: user.username, userId: storedToken.userId };
+    
+    // Generate a new refresh token
+    const newRefreshToken = this.generateRefreshToken(storedToken.userId);
+    
+    // Delete the old token
+    this.refreshTokenStore.delete(refreshToken);
+    
     return {
       access_token: this.jwtService.sign(payload),
+      refresh_token: newRefreshToken,
     };
   }
-  
-  async register(userData: any) {
-    const user = await this.usersService.create(userData);
-    const payload = { username: user.username, sub: user['_id'] };
+
+  generateRefreshToken(userId: string): string {
+    // Generate a new refresh token and store it
+    const token = Math.random().toString(36).substring(2, 15) + 
+                 Math.random().toString(36).substring(2, 15);
+    
+    this.refreshTokenStore.set(token, {
+      userId,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    });
+    
+    return token;
+  }
+
+  async changePassword(user: UserPayload, changePasswordDto: ChangePasswordDto) {
+    const userEntity = await this.usersService.findOneWithPassword(user.userId);
+    
+    if (!userEntity) {
+      throw new UnauthorizedException('User not found');
+    }
+    
+    // Verify current password
+    const isPasswordValid = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      userEntity.password
+    );
+    
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    
+    // Verify new password and confirmation match
+    if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
+      throw new UnauthorizedException('New password and confirmation do not match');
+    }
+    
+    // Update password
+    await this.usersService.updatePassword(user.userId, changePasswordDto.newPassword);
+    
+    return { status: 200, message: 'Password changed successfully' };
+  }
+
+  async validateUser(username: string, password: string) {
+    return this.usersService.validateUser(username, password);
+  }
+
+  async login(user: any) {
+    const payload = { username: user.username, userId: user._id };
+    
     return {
       access_token: this.jwtService.sign(payload),
+      refresh_token: this.generateRefreshToken(user._id),
     };
   }
 }
-//Creacion de servicio para autenticacion usando bcrypt
