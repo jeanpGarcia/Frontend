@@ -4,7 +4,6 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from '../dto/create-user.dto';
-import { UpdateUserDto } from '../dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
@@ -88,51 +87,6 @@ export class UsersService {
     
     // Return user without password
     const userObj = savedUser.toObject();
-    const { password, ...result } = userObj;
-    return result;
-  }
-
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<Partial<User>> {
-    const updateData = { ...updateUserDto };
-    
-    // If password is being updated, hash it
-    if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
-    }
-    
-    // Check if updating to an existing username
-    if (updateData.username) {
-      const existingUser = await this.userModel.findOne({ 
-        username: updateData.username,
-        _id: { $ne: id } 
-      }).exec();
-      
-      if (existingUser) {
-        throw new ConflictException('Username already exists');
-      }
-    }
-    
-    // Check if updating to an existing email
-    if (updateData.email) {
-      const existingUser = await this.userModel.findOne({ 
-        email: updateData.email,
-        _id: { $ne: id } 
-      }).exec();
-      
-      if (existingUser) {
-        throw new ConflictException('Email already exists');
-      }
-    }
-    
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, updateData, { new: true })
-      .exec();
-      
-    if (!updatedUser) {
-      throw new NotFoundException(`User with id ${id} not found`);
-    }
-    
-    const userObj = updatedUser.toObject();
     const { password, ...result } = userObj;
     return result;
   }

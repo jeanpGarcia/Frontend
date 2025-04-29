@@ -1,9 +1,9 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { ChangePasswordDto } from '../dto/change-password.dto';
+
 import { CreateUserDto } from '../dto/create-user.dto';
-import * as bcrypt from 'bcrypt';
+
 
 // Define a proper interface for refresh tokens
 export interface RefreshTokenStore {
@@ -52,16 +52,6 @@ export class AuthService {
     return this.usersService.findOne(user.userId);
   }
 
-  async logout(user: UserPayload) {
-    // Implementation for logout - invalidate refresh tokens for this user
-    // This is a simple implementation, in a real app you would find and delete all tokens for this user
-    for (const [token, data] of this.refreshTokenStore.entries()) {
-      if (data.userId === user.userId) {
-        this.refreshTokenStore.delete(token);
-      }
-    }
-    return { status: 200, message: 'Logged out successfully' };
-  }
 
   async refreshToken(refreshToken: string) {
     // Verify the refresh token exists in the store
@@ -105,33 +95,7 @@ export class AuthService {
     return token;
   }
 
-  async changePassword(user: UserPayload, changePasswordDto: ChangePasswordDto) {
-    const userEntity = await this.usersService.findOneWithPassword(user.userId);
-    
-    if (!userEntity) {
-      throw new UnauthorizedException('User not found');
-    }
-    
-    // Verify current password
-    const isPasswordValid = await bcrypt.compare(
-      changePasswordDto.currentPassword,
-      userEntity.password
-    );
-    
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Current password is incorrect');
-    }
-    
-    // Verify new password and confirmation match
-    if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
-      throw new UnauthorizedException('New password and confirmation do not match');
-    }
-    
-    // Update password
-    await this.usersService.updatePassword(user.userId, changePasswordDto.newPassword);
-    
-    return { status: 200, message: 'Password changed successfully' };
-  }
+ 
 
   async validateUser(username: string, password: string) {
     return this.usersService.validateUser(username, password);

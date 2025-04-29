@@ -1,17 +1,16 @@
-import { Controller, Get, Post, Body, UseGuards, Req, UnauthorizedException, HttpCode } from '@nestjs/common';
+import { Controller,  Post, Body, UnauthorizedException, HttpCode } from '@nestjs/common';
 import { 
   ApiTags, 
   ApiOperation, 
-  ApiResponse, 
-  ApiBearerAuth,
-  ApiBody
+  ApiResponse
+  
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+
 import { AuthService } from './auth.service';
-import { Request } from 'express';
-import { ChangePasswordDto } from '../dto/change-password.dto';
+
 import { LoginDto } from '../dto/login.dto';
 import { CreateUserDto } from '../dto/create-user.dto';
+
 import { UsersService } from '../users/users.service';
 
 @ApiTags('Auth')
@@ -24,21 +23,43 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
-  @ApiResponse({ status: 201, description: 'User registered successfully' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'User registered successfully',
+    schema: {
+      properties: {
+        message: { type: 'string', example: 'User registered successfully' },
+        user: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string', example: '6070f1f0b5d7c31b50e93ec1' },
+            username: { type: 'string', example: 'john_doe' },
+            email: { type: 'string', example: 'john@example.com' }
+          }
+        }
+      }
+    }
+  })
   @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 409, description: 'Username or email already exists' })
   async register(@Body() createUserDto: CreateUserDto) {
-    const user = await this.usersService.create(createUserDto);
-    return {
-      message: 'User registered successfully',
-      user
-    };
+    return this.authService.register(createUserDto);
   }
 
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'User login' })
-  @ApiResponse({ status: 200, description: 'Login successful' })
-  @ApiResponse({ status: 401, description: 'Login failed' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Login successful',
+    schema: {
+      properties: {
+        access_token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+        refresh_token: { type: 'string', example: 'abc123xyz456...' }
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() loginDto: LoginDto) {
     const user = await this.authService.validateUser(loginDto.username, loginDto.password);
     
@@ -47,45 +68,5 @@ export class AuthController {
     }
     
     return this.authService.login(user);
-  }
-
-  @Get('profile')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get user profile' })
-  @ApiResponse({ status: 200, description: 'Profile returned successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getProfile(@Req() req: Request) {
-    // The user property is added by the JwtAuthGuard
-    return this.authService.getProfile(req['user']);
-  }
-
-  @Post('logout')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'User logout' })
-  @ApiResponse({ status: 200, description: 'Logged out successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async logout(@Req() req: Request) {
-    return this.authService.logout(req['user']);
-  }
-
-  @Post('refresh-token')
-  @ApiOperation({ summary: 'Refresh access token' })
-  @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
-  @ApiResponse({ status: 401, description: 'Invalid refresh token' })
-  @ApiBody({ schema: { properties: { refreshToken: { type: 'string' } } } })
-  async refreshToken(@Body() body: { refreshToken: string }) {
-    return this.authService.refreshToken(body.refreshToken);
-  }
-
-  @Post('change-password')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Change user password' })
-  @ApiResponse({ status: 200, description: 'Password changed successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async changePassword(@Req() req: Request, @Body() changePasswordDto: ChangePasswordDto) {
-    return this.authService.changePassword(req['user'], changePasswordDto);
   }
 }
