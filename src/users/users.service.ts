@@ -43,15 +43,25 @@ export class UsersService {
     return user;
   }
 
-  async findByUsername(username: string): Promise<Partial<User> | null> {
+  async findByUsername(username: string): Promise<User | null> {
     const user = await this.userModel.findOne({ username }).exec();
     if (!user) {
       return null;
     }
-    const userObj = user.toObject();
-    const { password, ...result } = userObj;
-    return result;
+    return user.toObject();  // Retorna el objeto completo sin la contraseña
   }
+  
+  async removeByEmail(email: string): Promise<any> {
+    const result = await this.userModel.deleteOne({ email }).exec();
+    
+    if (result.deletedCount === 0) {
+      throw new NotFoundException(`User with email ${email} not found`);
+    }
+    
+    return { message: 'User successfully deleted' };
+  }
+  
+  
 
   async findByEmail(email: string): Promise<Partial<User> | null> {
     const user = await this.userModel.findOne({ email }).exec();
